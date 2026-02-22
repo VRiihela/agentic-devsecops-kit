@@ -30,8 +30,9 @@ Check and comment on relevant items:
   - Why needed (alternatives?)
   - Risk notes (maintenance, footprint, transitive deps)
   - Versioning strategy (pin vs range)
-- Audit status:
-  - `npm audit` / `pnpm audit` outcome (High/Critical issues? actions)
+- Audit evidence required:
+  - `npm audit --audit-level=high`
+  - No unresolved HIGH/CRITICAL before merge
 - Recommendation:
   - Accept / Accept with changes / Block
 
@@ -45,3 +46,11 @@ Check and comment on relevant items:
 - Severity: Low / Medium / High
 - Required mitigations before merge:
 - Follow-ups (optional):
+
+### 6) Secure SDLC Phase
+- Phase affected: (Design / Implementation / Testing / Deployment)
+- Is re-review required after mitigation? (Yes/No)
+
+### Merge Decision
+- Approved for merge: Yes / No
+- Blocking reason (if No):
