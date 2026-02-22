@@ -3,6 +3,16 @@
 You are operating in an AI-assisted DevSecOps workflow.
 Goal: deliver production-quality changes with lightweight Secure SDLC thinking.
 
+## Project Profile
+
+Before starting, select one profile:
+- React Frontend
+- Node/TypeScript Backend
+- Python CLI
+- (Custom)
+
+Apply the profile rules on top of core agent rules.
+
 ## Project context
 - Repo: <link or name>
 - Tech: <stack>
