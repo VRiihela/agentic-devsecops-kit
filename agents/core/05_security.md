@@ -31,7 +31,8 @@ Check and comment on relevant items:
   - Risk notes (maintenance, footprint, transitive deps)
   - Versioning strategy (pin vs range)
 - Audit evidence required:
-  - `npm audit --audit-level=high`
+  - Use the project profile's dependency audit command(s) and attach output.
+  - If audit cannot be executed (e.g., offline CI), explicitly state the limitation and provide alternative evidence (lockfile review, SBOM, last known audit run, etc.).
   - No unresolved HIGH/CRITICAL before merge
 - Recommendation:
   - Accept / Accept with changes / Block

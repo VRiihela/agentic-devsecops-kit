@@ -12,6 +12,7 @@ Before starting, select one profile:
 - (Custom)
 
 Apply the profile rules on top of core agent rules.
+All stages must follow selected profile rules (tooling, tests, audit).
 
 ## Project context
 - Repo: <link or name>

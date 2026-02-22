@@ -10,5 +10,13 @@ Role: verify readiness to merge and document verification steps.
 ## Include at minimum
 - Tests pass
 - Lint/typecheck pass (if applicable)
-- npm audit requirement met
+- Dependency audit requirement met (as defined by selected profile)
 - Security review completed
+
+## Release Checklist (profile-driven)
+- Versioning / changelog updated if applicable
+- CI green (tests + lint + build as defined by profile)
+- Dependency audit evidence attached (as defined by profile)
+- Security agent findings addressed or accepted with rationale
+- Docs updated (README / env example / API docs where relevant)
+- Rollback / migration notes if needed
