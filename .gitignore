@@ -18,3 +18,13 @@
 # Temporary files
 *.swp
 *~
+
+# OS
+Thumbs.db
+
+# Node (just in case)
+node_modules/
+
+# Python (just in case)
+__pycache__/
+*.pyc

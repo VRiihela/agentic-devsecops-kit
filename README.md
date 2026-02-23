@@ -102,3 +102,9 @@ It operationalizes security thinking through:
 
 The goal is not heavy compliance —
 but continuous security awareness embedded into daily development.
+
+## GitHub Automation
+
+Copy the contents of `templates/github/` into your project's `.github/` directory.
+
+Adjust workflows and ecosystems as needed.
