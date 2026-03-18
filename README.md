@@ -78,6 +78,85 @@ It is a development discipline framework.
 
 ---
 
+## Quick Start
+
+1. Copy the Kit into Your Project
+
+Copy the required components into your project:
+- core/ → docs/agents/core/
+- profiles/<your-profile>.md → docs/agents/profile.md
+- templates/github/ → .github/   (optional)
+- templates/issue_*.md → .github/ISSUE_TEMPLATE/ (optional)
+
+At minimum, you need:
+- core/
+- One selected profile
+- tasks/task-template.md
+
+2. Choose the profile that matches your project:
+
+Choose the profile that matches your project:
+- Node/TS Backend
+- React Frontend
+- Python CLI
+
+The selected profile defines:
+- Tooling commands (lint, test, build)
+- Dependency audit method
+- Security considerations
+
+3. Create a Task
+
+Create a new task using:
+- tasks/task-template.md
+
+Fill in:
+- Context
+- Acceptance Criteria
+- Scope
+- Risk Assessment
+- Selected Profile
+
+4. Run the Agent Workflow
+
+- 00_master → 01_architect → 02_implementer → 03_reviewer → 04_tester → 05_security → 06_release
+
+Each stage:
+- Produces structured output
+- Verifies Definition of Done
+- Applies profile-specific tooling
+- Enforces security review before merge
+
+5. (Optional) Enable GitHub Automation
+
+Copy the contents of:
+- templates/github/
+into your project's:
+- .github/
+
+This enables:
+- CI pipeline
+- CodeQL analysis
+- Dependency updates (Dependabot)
+
+## Philosophy
+
+This kit enforces:
+- Structured task definition
+- Profile-driven tooling
+- Security-first development
+- Explicit Definition of Done
+- Lightweight threat modeling
+- Supply-chain awareness
+
+## Minimal setup
+
+If you want the absolute minimum:
+1.	Copy core/
+2.	Copy one profile
+3.	Use task-template.md
+4.	Follow the agent stages manually
+
 ## Example Use Case
 
 See `/examples/typescript-express-demo/` for a full secure task run.
