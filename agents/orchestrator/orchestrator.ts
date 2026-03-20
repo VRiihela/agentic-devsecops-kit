@@ -580,7 +580,7 @@ async function main() {
   const result = await orchestrator.runPipeline(spec);
   orchestrator.printSummary(result);
 
-  const reportPath = `./reports/run_${result.runId}.md`;
+  const reportPath = `./reports/${result.runId}.md`;
   fs.mkdirSync("./reports", { recursive: true });
   fs.writeFileSync(reportPath, buildMarkdownReport(result, spec));
   console.log(`📝 Full report saved to: ${reportPath}`);
