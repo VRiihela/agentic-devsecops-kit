@@ -582,11 +582,11 @@ async function main() {
 
   const reportPath = `./reports/${result.runId}.md`;
   fs.mkdirSync("./reports", { recursive: true });
-  fs.writeFileSync(reportPath, buildMarkdownReport(result, spec));
+  fs.writeFileSync(reportPath, buildMarkdownReport(result, spec, specFile));
   console.log(`📝 Full report saved to: ${reportPath}`);
 }
 
-function buildMarkdownReport(entry: RunLogEntry, spec: TaskSpec): string {
+function buildMarkdownReport(entry: RunLogEntry, spec: TaskSpec, taskFilePath?: string): string {
   const lines: string[] = [
     `# Pipeline Report: ${entry.taskTitle}`,
     ``,
@@ -595,12 +595,11 @@ function buildMarkdownReport(entry: RunLogEntry, spec: TaskSpec): string {
     `**Started:** ${entry.startedAt}  `,
     `**Completed:** ${entry.completedAt ?? "N/A"}  `,
     ``,
-    `## Task Specification`,
-    ``,
-    `**Description:** ${spec.description}`,
-    ``,
-    `**Acceptance Criteria:**`,
-    ...spec.acceptanceCriteria.map((c) => `- ${c}`),
+    `## Task Spec`,
+    ...(taskFilePath ? [`**File:** ${path.basename(taskFilePath)}`, ``] : []),
+    "```json",
+    JSON.stringify(spec, null, 2),
+    "```",
     ``,
   ];
 
