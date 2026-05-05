@@ -46,6 +46,7 @@ export interface RunLogEntry {
   commitHash?: string;
   blockedAt?: AgentRole;
   blockedReason?: string;
+  implementerRetries?: number;
 }
 
 export type AgentRole =
@@ -245,9 +246,9 @@ export class AgenticOrchestrator {
     this.dodPath = dodPath;
   }
 
-  async runPipeline(spec: TaskSpec): Promise<RunLogEntry> {
+  async runPipeline(spec: TaskSpec, fromStage?: AgentRole): Promise<RunLogEntry> {
     const runId = `run_${Date.now()}`;
-    const pipeline: AgentRole[] = [
+    const allStages: AgentRole[] = [
       "architect",
       "implementer",
       "reviewer",
@@ -256,22 +257,43 @@ export class AgenticOrchestrator {
       "release",
     ];
 
+    const fromIdx = fromStage ? allStages.indexOf(fromStage) : 0;
+
     const entry: RunLogEntry = {
       runId,
       taskTitle: spec.title,
       startedAt: new Date().toISOString(),
       status: "running",
       agents: [],
+      implementerRetries: 0,
     };
 
     this.saveRunLog(entry);
     console.log(`\n🚀 Starting pipeline: ${spec.title}`);
-    console.log(`   Run ID: ${runId}\n`);
+    console.log(`   Run ID: ${runId}`);
+    if (fromStage) console.log(`   Starting from: ${fromStage.toUpperCase()}`);
+    console.log();
 
-    // Accumulate context as we pass through agents
     let accumulatedContext = this.buildInitialContext(spec);
 
-    for (const role of pipeline) {
+    // Log skipped stages and add a note to the context
+    if (fromIdx > 0) {
+      const skippedStages = allStages.slice(0, fromIdx);
+      for (const role of skippedStages) {
+        console.log(`⏭️  Skipping ${role.toUpperCase()} (--from-stage ${fromStage})`);
+        entry.agents.push({
+          agentRole: role,
+          output: "Skipped via --from-stage flag",
+          passed: true,
+          timestamp: new Date().toISOString(),
+          durationMs: 0,
+        });
+      }
+      accumulatedContext += `\n\n${"=".repeat(60)}\nNote: Stages [${skippedStages.join(", ")}] were skipped via --from-stage. Proceed from ${fromStage} stage.\n${"=".repeat(60)}`;
+    }
+
+    // Helper — runs a stage, logs output, appends to context, handles block
+    const runStage = async (role: AgentRole): Promise<{ passed: boolean; result: AgentResult }> => {
       console.log(`\n──────────────────────────────────────`);
       console.log(`🤖 Agent: ${role.toUpperCase()}`);
       console.log(`──────────────────────────────────────`);
@@ -279,12 +301,8 @@ export class AgenticOrchestrator {
       const result = await this.runAgent(role, accumulatedContext);
       entry.agents.push(result);
 
-      console.log(
-        `\n${result.passed ? "✅" : "🚫"} ${role.toUpperCase()} ${result.passed ? "PASS" : "BLOCK"}`
-      );
+      console.log(`\n${result.passed ? "✅" : "🚫"} ${role.toUpperCase()} ${result.passed ? "PASS" : "BLOCK"}`);
       console.log(`   Duration: ${result.durationMs}ms`);
-
-      // Print a preview of the output
       const preview = result.output.slice(0, 300).replace(/\n/g, " ");
       console.log(`   Preview: ${preview}...`);
 
@@ -295,11 +313,117 @@ export class AgenticOrchestrator {
         entry.completedAt = new Date().toISOString();
         this.saveRunLog(entry);
         console.log(`\n🚫 Pipeline blocked at ${role}: ${entry.blockedReason}`);
-        return entry;
+      } else {
+        accumulatedContext += `\n\n${"=".repeat(60)}\n${role.toUpperCase()} AGENT OUTPUT:\n${"=".repeat(60)}\n${result.output}`;
       }
 
-      // Each agent's output becomes part of the next agent's context
-      accumulatedContext += `\n\n${"=".repeat(60)}\n${role.toUpperCase()} AGENT OUTPUT:\n${"=".repeat(60)}\n${result.output}`;
+      return { passed: result.passed, result };
+    };
+
+    // ── Architect ──────────────────────────────────────────────────────────────
+    if (fromIdx <= allStages.indexOf("architect")) {
+      const { passed } = await runStage("architect");
+      if (!passed) return entry;
+    }
+
+    // ── Implementer → Reviewer (with retry loop) ───────────────────────────────
+    const skipImplementer = fromIdx > allStages.indexOf("implementer");
+    const skipReviewer = fromIdx > allStages.indexOf("reviewer");
+
+    if (!skipReviewer) {
+      if (skipImplementer) {
+        // Resume from reviewer only — no retry possible without implementer
+        const { passed } = await runStage("reviewer");
+        if (!passed) return entry;
+      } else {
+        // Full retry loop: implementer → reviewer, up to 3 total attempts
+        const MAX_ATTEMPTS = 3;
+        let reviewerPassed = false;
+        let lastReviewerOutput = "";
+
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          if (attempt > 1) {
+            console.log(`\n🔄 Reviewer blocked — retrying implementer (attempt ${attempt}/3)`);
+          }
+
+          // Build implementer context — inject reviewer block reason on retries
+          const implContext = attempt === 1
+            ? accumulatedContext
+            : accumulatedContext +
+              `\n\nREVIEWER BLOCK — attempt ${attempt}/3. Fix the following issues and rewrite only the affected code:\n\n${lastReviewerOutput}`;
+
+          console.log(`\n──────────────────────────────────────`);
+          console.log(`🤖 Agent: IMPLEMENTER${attempt > 1 ? ` (retry ${attempt}/3)` : ""}`);
+          console.log(`──────────────────────────────────────`);
+
+          const implResult = await this.runAgent("implementer", implContext);
+          entry.agents.push(implResult);
+
+          console.log(`\n${implResult.passed ? "✅" : "🚫"} IMPLEMENTER ${implResult.passed ? "PASS" : "BLOCK"}`);
+          console.log(`   Duration: ${implResult.durationMs}ms`);
+          console.log(`   Preview: ${implResult.output.slice(0, 300).replace(/\n/g, " ")}...`);
+
+          if (!implResult.passed) {
+            entry.status = "blocked";
+            entry.blockedAt = "implementer";
+            entry.blockedReason = this.extractBlockReason(implResult.output, "implementer");
+            entry.completedAt = new Date().toISOString();
+            this.saveRunLog(entry);
+            console.log(`\n🚫 Pipeline blocked at implementer: ${entry.blockedReason}`);
+            return entry;
+          }
+
+          // Reviewer sees everything up to now + this implementer output
+          const reviewerContext =
+            accumulatedContext +
+            `\n\n${"=".repeat(60)}\nIMPLEMENTER AGENT OUTPUT:\n${"=".repeat(60)}\n${implResult.output}`;
+
+          console.log(`\n──────────────────────────────────────`);
+          console.log(`🤖 Agent: REVIEWER`);
+          console.log(`──────────────────────────────────────`);
+
+          const reviewerResult = await this.runAgent("reviewer", reviewerContext);
+          entry.agents.push(reviewerResult);
+          lastReviewerOutput = reviewerResult.output;
+
+          if (attempt > 1) {
+            entry.implementerRetries = (entry.implementerRetries ?? 0) + 1;
+          }
+
+          console.log(`\n${reviewerResult.passed ? "✅" : "🚫"} REVIEWER ${reviewerResult.passed ? "PASS" : "BLOCK"}`);
+          console.log(`   Duration: ${reviewerResult.durationMs}ms`);
+          console.log(`   Preview: ${reviewerResult.output.slice(0, 300).replace(/\n/g, " ")}...`);
+
+          if (reviewerResult.passed) {
+            // Commit both outputs to the shared context and move on
+            accumulatedContext +=
+              `\n\n${"=".repeat(60)}\nIMPLEMENTER AGENT OUTPUT:\n${"=".repeat(60)}\n${implResult.output}` +
+              `\n\n${"=".repeat(60)}\nREVIEWER AGENT OUTPUT:\n${"=".repeat(60)}\n${reviewerResult.output}`;
+            reviewerPassed = true;
+            break;
+          }
+
+          if (attempt === MAX_ATTEMPTS) {
+            entry.status = "blocked";
+            entry.blockedAt = "reviewer";
+            entry.blockedReason = this.extractBlockReason(reviewerResult.output, "reviewer");
+            entry.completedAt = new Date().toISOString();
+            this.saveRunLog(entry);
+            console.log(`\n🚫 Pipeline blocked at reviewer after ${MAX_ATTEMPTS} attempts: ${entry.blockedReason}`);
+            return entry;
+          }
+        }
+
+        if (!reviewerPassed) return entry;
+      }
+    }
+
+    // ── Tester → Security → Release ────────────────────────────────────────────
+    for (const role of ["tester", "security", "release"] as AgentRole[]) {
+      if (fromIdx <= allStages.indexOf(role)) {
+        const { passed } = await runStage(role);
+        if (!passed) return entry;
+      }
     }
 
     entry.status = "completed";
@@ -308,9 +432,8 @@ export class AgenticOrchestrator {
 
     console.log(`\n\n🎉 Pipeline completed successfully!`);
     console.log(`   Total agents: ${entry.agents.length}`);
-    console.log(
-      `   Total time: ${this.getTotalDuration(entry)}ms\n`
-    );
+    if (entry.implementerRetries) console.log(`   Implementer retries: ${entry.implementerRetries}`);
+    console.log(`   Total time: ${this.getTotalDuration(entry)}ms\n`);
 
     return entry;
   }
@@ -552,7 +675,28 @@ async function collectTaskSpec(): Promise<TaskSpec> {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const specFile = process.argv[2];
+  const VALID_STAGES: AgentRole[] = [
+    "architect", "implementer", "reviewer", "tester", "security", "release",
+  ];
+
+  // Parse --from-stage flag and remove it from argv before reading specFile
+  const rawArgs = process.argv.slice(2);
+  const flagIdx = rawArgs.indexOf("--from-stage");
+  let fromStage: AgentRole | undefined;
+
+  if (flagIdx !== -1) {
+    const value = rawArgs[flagIdx + 1];
+    if (!value || !VALID_STAGES.includes(value as AgentRole)) {
+      console.error(
+        `❌ Invalid --from-stage value: "${value ?? ""}". Valid values: ${VALID_STAGES.join(", ")}`
+      );
+      process.exit(1);
+    }
+    fromStage = value as AgentRole;
+    rawArgs.splice(flagIdx, 2);
+  }
+
+  const specFile = rawArgs[0];
   let spec: TaskSpec;
 
   if (specFile) {
@@ -577,7 +721,7 @@ async function main() {
     agentsDir,
     dodPath
   );
-  const result = await orchestrator.runPipeline(spec);
+  const result = await orchestrator.runPipeline(spec, fromStage);
   orchestrator.printSummary(result);
 
   const reportPath = `./reports/${result.runId}.md`;
